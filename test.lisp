@@ -26,7 +26,7 @@
   (setf (sprite-batch w) (make-instance 'generic-sprite-batch))
   (setf (tileset w)
         (load-atlas
-         "debug-texture.png"
+         (asdf:system-relative-pathname 'sprite-batch "debug-texture.png")
          64 64 :name :debug-texture
          :tile-offset #(-32 -32))))
 
