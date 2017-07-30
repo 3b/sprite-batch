@@ -26,7 +26,7 @@
   (setf (sprite-batch w) (make-instance 'generic-sprite-batch))
   (setf (tileset w)
         (load-atlas
-         "~/quicklisp/local-projects/3bgl-misc/data/debug-texture.png"
+         "debug-texture.png"
          64 64 :name :debug-texture
          :tile-offset #(-32 -32))))
 
