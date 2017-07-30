@@ -69,6 +69,9 @@
                                 (element-count batch)))))
 
 ;;; main API class, generic sprites with scale, rotation, auto-z
+(defconstant +gsb-float-buffer-stride+ 10)
+(defconstant +gsb-int-buffer-stride+ 1)
+
 (defclass generic-sprite-batch (sprite-batch)
   ((transform :initform (make-array 6
                                     :element-type 'single-float
@@ -81,16 +84,14 @@
    (vao :initform nil :reader vao)
    (vbos :initform nil :reader vbos)
    (vertex-data/i :reader vertex-data/i
-                  :initform (make-array 1024 :element-type '(unsigned-byte 32)
-                                             :fill-pointer 0 :adjustable t))
+                  :initform (make-array (* 128 1024 +gsb-int-buffer-stride+)
+                                        :element-type '(unsigned-byte 32)))
    (vertex-data/f :reader vertex-data/f
-                  :initform (make-array 1024 :element-type 'single-float
-                                             :fill-pointer 0 :adjustable t))
+                  :initform (make-array (* 128 1024 +gsb-float-buffer-stride+)
+                                        :element-type 'single-float))
+   (element-count :accessor element-count :initform 0)
    (batch-start :initform 0 :accessor batch-start))
   (:default-initargs :program ':generic))
-
-(defconstant +gsb-float-buffer-stride+ 10)
-(defconstant +gsb-int-buffer-stride+ 1)
 
 (defmethod initialize-instance :after ((s generic-sprite-batch) &key)
   (let* ((vao (gl:gen-vertex-array))
@@ -118,18 +119,11 @@
 (defmethod flush :after ((s generic-sprite-batch))
   ;; reset cpu-side vertex buffers
   (setf (batch-start s) 0
-        (fill-pointer (vertex-data/i s)) 0
-        (fill-pointer (vertex-data/f s)) 0))
+        (element-count s) 0))
 
 (defmethod bind :after ((s generic-sprite-batch))
   ;; upload vertex data
-  (let ((count (/ (length (vertex-data/i s))
-                  +gsb-int-buffer-stride+)))
-    (assert (= count
-               (/ (length (vertex-data/i s))
-                  +gsb-int-buffer-stride+)
-               (/ (length (vertex-data/f s))
-                  +gsb-float-buffer-stride+)))
+  (let ((count (element-count s)))
     (when (plusp count)
       ;; todo: avoid extra copies
       (static-vectors:with-static-vector (v (* +gsb-float-buffer-stride+
@@ -176,14 +170,24 @@
 
 
 (defmethod vertex ((batch generic-sprite-batch) id x y)
-  (vector-push-extend id (vertex-data/i batch))
-  (let ((v (vertex-data/f batch)))
-    (vector-push-extend x v)
-    (vector-push-extend y v)
-    (vector-push-extend (base-z batch) v)
-    (vector-push-extend (z-scale batch) v)
-    (loop for tx across (%transform batch)
-          do (vector-push-extend tx v))))
+  (let ((vx/f (vertex-data/f batch))
+        (vx/i (vertex-data/i batch))
+        (fi (* +gsb-float-buffer-stride+ (element-count batch)))
+        (ii (* +gsb-int-buffer-stride+ (element-count batch))))
+    (declare (type (simple-array single-float (*)) vx/f)
+             (type (simple-array (unsigned-byte 32) (*)) vx/i))
+    (when (array-in-bounds-p (vertex-data/i batch) ii)
+      (setf (aref vx/i ii) id)
+      (flet ((vf (f)
+               (setf (aref vx/f fi) f)
+               (incf fi)))
+        (vf x)
+        (vf y)
+        (vf (base-z batch))
+        (vf (z-scale batch))
+        (loop for tx across (%transform batch)
+              do (vf tx))))
+    (incf (element-count batch))))
 
 
 (defmethod make-uniform ((s sprite-batch) id &rest arguments)
@@ -197,8 +201,7 @@
   (list (make-uniform s 'view-projection (view-projection s))))
 
 (defmethod finish-batch ((s generic-sprite-batch))
-  (let* ((l (/ (length (vertex-data/i s))
-               +gsb-int-buffer-stride+)))
+  (let* ((l (element-count s)))
     (when (and (plusp l)
                (> l (batch-start s)))
       (push  (make-instance 'batch-draw
@@ -209,3 +212,27 @@
                             :element-count (- l (batch-start s)))
              (draw-list s))
       (setf (batch-start s) l))))
+
+(defmacro with-sprite-batch ((sb) &body body)
+  (alexandria:with-gensyms (vx/f vx/i fi ii ec)
+    (alexandria:once-only (sb)
+      `(let ((,vx/f (vertex-data/f ,sb))
+             (,vx/i (vertex-data/i ,sb))
+             (,fi (* +gsb-float-buffer-stride+ (element-count sb)))
+             (,ii (* +gsb-int-buffer-stride+ (element-count sb)))
+             (,ec (element-count ,sb)))
+         (declare (type (simple-array single-float (*)) ,vx/f)
+                  (type (simple-array (unsigned-byte 32) (*)) ,vx/i)
+                  (fixnum ,fi ,ii ,ec))
+         (macrolet ((vx/f (v)
+                      `(progn
+                         (setf (aref ,',vx/f ,',fi) ,v)
+                         (incf ,',fi)))
+                    (vx/i (v)
+                      `(progn
+                         (setf (aref ,',vx/i ,',ii) ,v)
+                         (incf ,',ec)
+                         (setf ,',fi (* +gsb-float-buffer-stride+ ,',ec))
+                         (setf ,',ii (* +gsb-int-buffer-stride+ ,',ec))
+                         (setf (element-count ,',sb) ,',ec))))
+           ,@body)))))

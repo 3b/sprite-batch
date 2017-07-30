@@ -61,85 +61,83 @@
       (setf (tileset sb) (tileset w))
       (setf (base-z sb) -9.0)
       (setf (z-scale sb) 1.0)
-      (loop with vx/f = (vertex-data/f sb)
-            with vx/i = (vertex-data/i sb)
-            with now = (float (now) 1.0)
-            with wx = (float (wx w) 1.0)
-            with wy = (float (wy w) 1.0)
-            with cx = (/ wx 2.0)
-            with cy = (/ wy 2.0)
-            for x single-float across sprites/x
-            for y single-float across sprites/y
-            for .scale across sprites/s
-            for scale = (* .scale 0.125)
-            for id fixnum across sprites/id
-            for n fixnum from 0
-            ;;when (zerop (mod n 2))
-            do (let* ((a (float (* (if (evenp id) -1 1)
-                                   now id 0.01)
-                                1.0))
-                      (c (* scale (cos a)))
-                      (s (* scale (sin a))))
-                 (setf (aref m 0) c
-                       (aref m 1) s
-                       (aref m 4) (- s)
-                       (aref m 5) c)
-                 (setf (transform sb) m))
-            #++(setf (transform sb)
-                     (sb-cga:matrix*
-                      (let* ((a (float (* (if (evenp id) -1 1)
-                                          now id 0.01)
-                                       1.0))
-                             (c (cos a))
-                             (s (sin a)))
-                        (sb-cga:matrix c     (- s) 0f0    0f0
-                                       s     c     0f0    0f0
-                                       0f0   0f0   1f0    0f0
-                                       0f0   0f0   0f0    1f0))
-                      #++
-                      (sb-cga:rotate* 0.0 0.0 a)
-                      (sb-cga:scale* scale scale 1.0)))
-            do
-            #++
-             (setf x (+ x (- (random 1) 0.5) (* -0.1 (/ (- x cx) wx))))
-            #++
-             (setf y (+ y (1- (random 3)) (* -0.1 (/ (- y cy) wy))))
-             (setf (aref sprites/x n) (nth-value 1 (ffloor (+ x
-                                                              (/ id 512.0))
-                                                           wx)))
-             (setf (aref sprites/y n) (nth-value 1 (ffloor
-                                                    (+ y
-                                                       (/ id 1024.0))
-                                                    wy)))
-            #++
-             (vertex sb id (float x 1.0) (float y 1.0))
+      (with-sprite-batch (sb)
+        (loop with now = (float (now) 1.0)
+              with wx = (float (wx w) 1.0)
+              with wy = (float (wy w) 1.0)
+              with cx = (/ wx 2.0)
+              with cy = (/ wy 2.0)
+              for x single-float across sprites/x
+              for y single-float across sprites/y
+              for .scale across sprites/s
+              for scale = (* .scale 0.125 0.5)
+              for id fixnum across sprites/id
+              for n fixnum from 0
+              ;;when (zerop (mod n 2))
+              #+do (let* ((a (float (* (if (evenp id) -1 1)
+                                       now id 0.01)
+                                    1.0))
+                          (c (* scale (cos a)))
+                          (s (* scale (sin a))))
+                     (setf (aref m 0) c
+                           (aref m 1) s
+                           (aref m 4) (- s)
+                           (aref m 5) c)
+                     (setf (transform sb) m))
+              #++(setf (transform sb)
+                       (sb-cga:matrix*
+                        (let* ((a (float (* (if (evenp id) -1 1)
+                                            now id 0.01)
+                                         1.0))
+                               (c (cos a))
+                               (s (sin a)))
+                          (sb-cga:matrix c     (- s) 0f0    0f0
+                                         s     c     0f0    0f0
+                                         0f0   0f0   1f0    0f0
+                                         0f0   0f0   0f0    1f0))
+                        #++
+                        (sb-cga:rotate* 0.0 0.0 a)
+                        (sb-cga:scale* scale scale 1.0)))
+              do
+              #++
+               (setf x (+ x (- (random 1) 0.5) (* -0.1 (/ (- x cx) wx))))
+              #++
+               (setf y (+ y (1- (random 3)) (* -0.1 (/ (- y cy) wy))))
+               (setf (aref sprites/x n) (nth-value 1 (ffloor (+ x
+                                                                (/ id 512.0))
+                                                             wx)))
+               (setf (aref sprites/y n) (nth-value 1 (ffloor
+                                                      (+ y
+                                                         (/ id 1024.0))
+                                                      wy)))
+              #++
+               (vertex sb id (float x 1.0) (float y 1.0))
+              #++
+               (progn ;; generic mode
+                 (vx/f x)
+                 (vx/f y)
+                 (vx/f -9.0)
+                 (vx/f 1.0)
+                 (vx/f (aref m 0))
+                 (vx/f (aref m 4))
+                 (vx/f (aref m 12))
+                 (vx/f (aref m 1))
+                 (vx/f (aref m 5))
+                 (vx/f (aref m 13))
+                 (vx/i id))
 
-             (progn ;; generic mode
-               (vector-push-extend x vx/f)
-               (vector-push-extend y vx/f)
-               (vector-push-extend -9.0 vx/f)
-               (vector-push-extend 1.0 vx/f)
-               (vector-push-extend (aref m 0) vx/f)
-               (vector-push-extend (aref m 4) vx/f)
-               (vector-push-extend (aref m 12) vx/f)
-               (vector-push-extend (aref m 1) vx/f)
-               (vector-push-extend (aref m 5) vx/f)
-               (vector-push-extend (aref m 13) vx/f)
-               (vector-push-extend id vx/i))
-            #++
-             (progn ;; particle mode
-               (vector-push-extend x vx/f)
-               (vector-push-extend y vx/f)
-               (vector-push-extend -9.0 vx/f)
-               (vector-push-extend 1.0 vx/f)
-               (vector-push-extend (float (* (if (evenp id) -1 1)
-                                             now id 0.01) 1.0) vx/f) ;; angle
-               (vector-push-extend scale vx/f) ;; scale
-               (vector-push-extend 0.0 vx/f)   ;; ignored
-               (vector-push-extend 0.0 vx/f)   ;; tint u
-               (vector-push-extend -1.0 vx/f) ;; tint v (negative = no tint)
-               (vector-push-extend 0.0 vx/f)  ;; ignored
-               (vector-push-extend (dpb 2 (byte 8 24) id) vx/i))))))
+               (progn ;; particle mode
+                 (vx/f x)
+                 (vx/f y)
+                 (vx/f -9.0)
+                 (vx/f 1.0)
+                 (vx/f (* (if (evenp id) -1 1) now id 0.01)) ;; angle
+                 (vx/f scale)                                ;; scale
+                 (vx/f 0.0)  ;; ignored
+                 (vx/f 0.0)  ;; tint u
+                 (vx/f -1.0) ;; tint v (negative = no tint)
+                 (vx/f 0.0)  ;; ignored
+                 (vx/i (dpb 2 (byte 8 24) id))))))))
 
 (defmethod draw ((w test1))
   (setf *w* (list w *texture-manager*))
